@@ -1,7 +1,9 @@
 # GitHub Actions CI Template for Python
 
 [![CI Status](https://github.com/GLarsX7/gh_workflow_template/actions/workflows/python-ci.yml/badge.svg)](https://github.com/GLarsX7/gh_workflow_template/actions/workflows/python-ci.yml)
+[![Flutter CI](https://github.com/GLarsX7/gh_workflow_template/actions/workflows/flutter-ci.yml/badge.svg)](https://github.com/GLarsX7/gh_workflow_template/actions/workflows/flutter-ci.yml)
 [![Python Versions](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)](https://www.python.org/)
+[![Flutter](https://img.shields.io/badge/Flutter-3.19.x-02569B?logo=flutter)](https://flutter.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code Style: Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
@@ -10,7 +12,7 @@
 
 ## 🚀 Overview
 
-This repository provides a **production-grade, security-hardened GitHub Actions Workflow** for Python projects. It is designed to be the "gold standard" for CI/CD, incorporating best practices for security, performance, and modularity.
+This repository provides **production-grade, security-hardened GitHub Actions Workflows** for **Python** and **Flutter** projects. It is designed to be the "gold standard" for CI/CD, incorporating best practices for security, performance, and modularity.
 
 ## ✨ Key Features
 

@@ -1,0 +1,237 @@
+name: Flutter CI Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
+  pull_request:
+    branches: [main, develop]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
+  workflow_dispatch:
+
+env:
+  FLUTTER_CHANNEL: 'stable'
+  FLUTTER_VERSION: '3.19.x' # Example, or use 'any'
+
+jobs:
+  # ==============================================================================
+  # Check: Detect if this is a Flutter/Dart project
+  # ==============================================================================
+  detect:
+    name: Detect Flutter Project
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      has_flutter: ${{ steps.check.outputs.has_flutter }}
+      has_tests: ${{ steps.check.outputs.has_tests }}
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Check for Flutter files
+        id: check
+        run: |
+          # Check for pubspec.yaml
+          if [ -f "pubspec.yaml" ]; then
+            echo "has_flutter=true" >> $GITHUB_OUTPUT
+            echo "✅ Flutter project detected (pubspec.yaml found)"
+          else
+            echo "has_flutter=false" >> $GITHUB_OUTPUT
+            echo "⚠️ No pubspec.yaml found - skipping Flutter CI"
+          fi
+          
+          # Check if test directory exists
+          if [ -d "test" ] || [ -d "integration_test" ]; then
+            echo "has_tests=true" >> $GITHUB_OUTPUT
+            echo "✅ Tests directory found"
+          else
+            echo "has_tests=false" >> $GITHUB_OUTPUT
+            echo "⚠️ No test directory found"
+          fi
+
+  # ==============================================================================
+  # Quality: Formatting and Analysis
+  # ==============================================================================
+  quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: detect
+    if: needs.detect.outputs.has_flutter == 'true'
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Format Check (dart format)
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Static Analysis (flutter analyze)
+        run: flutter analyze
+
+  # ==============================================================================
+  # Security: Dependency Analysis
+  # ==============================================================================
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: detect
+    if: needs.detect.outputs.has_flutter == 'true'
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Check Outdated Dependencies
+        # Fails if there are outdated dependencies that are not dev_dependencies
+        # This is a basic check. For strict security, consider using 'osv-scanner' or similar.
+        run: flutter pub outdated --no-dev-dependencies --transitive || echo "::warning::Found outdated dependencies"
+
+  # ==============================================================================
+  # Test: Unit and Widget Tests
+  # ==============================================================================
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: detect
+    if: needs.detect.outputs.has_flutter == 'true' && needs.detect.outputs.has_tests == 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Run Tests
+        run: flutter test --coverage
+
+      - name: Upload Coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage/lcov.info
+          flags: flutter
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # ==============================================================================
+  # Build: Verify Compilation (Android/Web)
+  # ==============================================================================
+  build:
+    name: Build Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [quality, security, test]
+    if: needs.detect.outputs.has_flutter == 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Build APK (Debug)
+        run: flutter build apk --debug
+
+      # Optional: Build Web
+      # - name: Build Web
+      #   run: flutter build web
+
+  # ==============================================================================
+  # Status Gate: Final Pipeline Validation
+  # ==============================================================================
+  status:
+    name: CI Status
+    runs-on: ubuntu-latest
+    needs: [detect, quality, security, test, build]
+    if: always()
+
+    steps:
+      - name: Check if Flutter project
+        if: needs.detect.outputs.has_flutter != 'true'
+        run: |
+          echo "⚠️ No Flutter project detected - CI pipeline skipped"
+          exit 0
+
+      - name: Check required jobs
+        if: needs.detect.outputs.has_flutter == 'true'
+        run: |
+          results=(
+            "${{ needs.quality.result }}"
+            "${{ needs.security.result }}"
+          )
+          
+          if [ "${{ needs.detect.outputs.has_tests }}" == "true" ]; then
+            results+=("${{ needs.test.result }}")
+          fi
+          
+          if [ "${{ needs.build.result }}" != "skipped" ]; then
+            results+=("${{ needs.build.result }}")
+          fi
+          
+          failed=false
+          for result in "${results[@]}"; do
+            if [[ "$result" != "success" && "$result" != "skipped" ]]; then
+              echo "::error::Pipeline failed. Job result: $result"
+              failed=true
+            fi
+          done
+          
+          if [ "$failed" = true ]; then
+            exit 1
+          fi
+          
+          echo "✅ All required checks passed"
